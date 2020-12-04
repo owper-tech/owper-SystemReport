@@ -1,0 +1,837 @@
+---
+title: "Daily System Report table"
+output: 
+  html_document: 
+    toc: yes
+editor_options: 
+    chunk_output_type: console
+---
+
+`r paste("Updated",as.POSIXct(Sys.time(),"%Y-%m-%d %H:%M",tz=""))`
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Webscraping
+library(rvest)
+library(readr)
+library(rjson)
+
+#Table
+library(kableExtra)
+library(knitr)
+
+#Standard analysis
+library(AnalystHelper)
+library(plyr)
+library(reshape)
+library(lubridate)
+library(dataRetrieval)
+library(zoo)
+library(RCurl)
+# library(data.table)
+
+###
+
+WMD.json=function(path){
+  dat=fromJSON(file=path)
+  dat=data.frame(Date= sapply(dat, "[", 1), Value = sapply(dat, "[", 2))
+  dat$Date=date.fun(as.POSIXct(dat$Date/1000,origin="1970-01-01",tz="GMT"))
+  return(dat)
+}
+ColumnRename=function(rawData){
+  Conv.df=data.frame(conv.vals=c(paste("p",c("00010","00095","00480","00060"),sep="")),conv.defs=c("Wtemp","SpCond","Sal","Flow"))
+  Cnames=names(rawData)
+  dataColumns <- c(grep("X_", Cnames), grep("X\\d{2}", Cnames))
+  
+  for(i in dataColumns){
+    chunks <- strsplit(Cnames[i], "_")[[1]]
+    chunks=unlist(strsplit(chunks,".",fixed=T))
+    loc=toupper(chunks[chunks%in%c("TOP","Top","BOTTOM","Bottom")==T])
+    param=paste0("p",chunks[paste0("p",chunks) %in% Conv.df$conv.vals])
+    param.def=as.character(subset(Conv.df,conv.vals==param)$conv.defs)
+    flag=if(length(chunks[(chunks=="cd")])==0){NA}else{chunks[(chunks=="cd")]}
+    Cnames[i]=if(is.na(flag)==F){paste(loc,param.def,flag,sep="_")}else{paste(loc,param.def,sep="_")}
+  }
+  Cnames <- gsub("X_", "", Cnames)
+  names(rawData) <- Cnames
+  return(rawData)
+}
+###
+TODAY=as.POSIXct(strptime(Sys.time(),"%F"),tz="EST")
+dates=rep(as.Date(Sys.Date())-ddays(1),2)
+
+row.vals=c("Current Level (ft. NGVD)",
+           "Above(+)/Below(-)<br>Regulation Schedule (ft. NGVD)",
+           "Above(+)/Below(-)<br>High Water Closure Criteria (ft. NGVD)",
+           "Total Structure Inflow (cfs)",
+           "Precipitation (cfs)",#"Precipitation (ft\u00B3)",
+           "Total Structure Outflow (cfs)",
+           "Estimated Evapotranspiration (cfs)",#"Estimated Evapotranspiration (ft\u00B3)",
+           "Volume Gain (+)/Loss(-)<br>(cfs)",
+           "Precipitation (in.)",
+           "Evapotranspiration Potential (in.)",
+           "Water Level Trend<br>from a Week Ago (ft. NGVD)")
+
+area.table=data.frame(Area="LakeO",area.mi2=730)
+area.table=rbind(area.table,data.frame(Area="WCA1",area.mi2=221))
+area.table=rbind(area.table,data.frame(Area="WCA2",area.mi2=209))
+area.table=rbind(area.table,data.frame(Area="WCA3A",area.mi2=758))
+area.table=rbind(area.table,data.frame(Area="WCA3B",area.mi2=156))
+area.table=rbind(area.table,data.frame(Area="HL",area.mi2=55))
+area.table=rbind(area.table,data.frame(Area="Roten",area.mi2=47))
+
+path="//Fldep1/OWPER/EVG/Programmatic/WaterQuality/R_Reports/DailySystemReport"
+
+```
+
+
+## Daily System Report Table
+
+```{r data, include=FALSE}
+# Lake Okeechobee ---------------------------------------------------------
+ url="http://w3.saj.usace.army.mil/h2o/reports/r-oke.html"
+ webpage=read_html(url)
+ node.val=html_nodes(webpage,"pre")
+ text.vals=html_text(node.val)
+ report=strsplit(as.character(text.vals),"\n")
+
+#Current Band
+LakeO.band=strsplit(report[[1]][13],"Currently in ")[[1]][2]
+
+## Stage Elevation
+
+url="http://w3.saj.usace.army.mil/h2o/reports/r-oke.html"
+webpage=tryCatch(read_html(url),error=function(x) "no.data")
+if(webpage!="no.data"){
+node.val=html_nodes(webpage,"pre")
+text.vals=html_text(node.val)
+report=strsplit(as.character(text.vals),"\n")
+}else{report=NA}
+
+## Stage Elevation
+
+WL=if(is.na(report)==T){NULL}else{as.numeric(strsplit(report[[1]][11],"\\s+")[[1]][5])}
+if(length(WL)==0|is.na(WL)){
+  WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_LAKEOAVG.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+}
+if(length(WL)==0|is.na(WL)){
+  WL.dat=DBHYDRO_daily(dates[1],dates[2],c("16022","12509","12519","16265","15826","FF579","15732"))
+  WL=round(mean(WL.dat$Data.Value,na.rm=T),2)
+}
+
+#Regulation schedule
+#reg.sch=as.numeric(strsplit(report[[1]][15],"\\s+")[[1]][6])
+reg.sch=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_LOW.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
+
+# Discharge
+# LO.dbkeys=openxlsx::read.xlsx("LakeO_DBKEYS_V3.xlsx")
+# q.dat=data.frame()
+# for(i in 1:nrow(LO.dbkeys)){
+#   tmp=DBHYDRO_daily(dates[1],dates[2],LO.dbkeys$DBKEY[i])
+#   tmp$DBKEY=as.character(LO.dbkeys$DBKEY[i])
+#   q.dat=rbind(tmp,q.dat)
+# }
+
+
+#Inflow
+dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][39:44],"\t"))))
+spl <-strsplit(as.character(dat$data),"\\s+\\s+")
+tmp1=data.frame(Structure= sapply(spl, "[", 2), Q = sapply(spl, "[", 3))
+tmp2=data.frame(Structure= sapply(spl, "[", 4), Q = sapply(spl, "[", 5))
+tmp3=data.frame(Structure= sapply(spl, "[", 6), Q = sapply(spl, "[", 7))
+q.in.dat=rbind(tmp1,tmp2,tmp3)
+q.in.dat$Q=as.numeric(as.character(q.in.dat$Q))
+q.in.dat$Q.in=with(q.in.dat,ifelse(Q<0,NA,Q))
+q.in=sum(as.numeric(as.character(q.in.dat$Q.in)),na.rm=T)
+
+#Rainfall
+area.ac=subset(area.table,Area=="LakeO")$area.mi2*640
+
+#From USACE
+#S77.RF=as.numeric(strsplit(report[[1]][176],"\\s+")[[1]][3])
+#S308.RF=as.numeric(strsplit(report[[1]][183],"\\s+")[[1]][3])
+#RF=mean(c(S308.RF,S77.RF),na.rm=T)/12
+#if(is.na(RF)){RF=0}else{RF}
+
+#From WMD
+rf.val='L_OKEECHOBEE_LAKE OKEECHOBEE'
+RF=WMD.json(paste0("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/",rf.val,".json"))
+RF=(subset(RF,Date==date.fun(Sys.Date()-ddays(1)))$Value)/12
+if(length(RF)==0){
+  RF.dat=DBHYDRO_daily(dates[1],dates[2],c("16289","16415"))
+  RF=mean(RF.dat$Data.Value,na.rm=T)/12}
+if(length(RF)==0|is.na(RF)){
+  RF.dat=DBHYDRO_daily(dates[1],dates[2],"13081")
+  RF=mean(RF.dat$Data.Value,na.rm=T)/12}
+RF.AcFt=area.ac*RF
+RF.cfs=RF.AcFt/1.98347
+
+#Outflow
+dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][48:51],"\t"))))
+spl <-strsplit(as.character(dat$data),"\\s+\\s+")
+tmp1=data.frame(Structure= sapply(spl, "[", 2), Q = sapply(spl, "[", 3))
+tmp2=data.frame(Structure= sapply(spl, "[", 4), Q = sapply(spl, "[", 5))
+tmp3=data.frame(Structure= sapply(spl, "[", 6), Q = sapply(spl, "[", 7))
+q.out.dat=rbind(tmp1,tmp2,tmp3)
+q.out.dat$Q=as.numeric(as.character(q.out.dat$Q))
+q.out.dat$Q.out=with(q.out.dat,ifelse(Q<0,NA,Q))
+q.out=sum(q.out.dat$Q.out,na.rm=T)
+q.out=q.out+sum(ifelse(q.in.dat$Q<0,abs(q.in.dat$Q),0),na.rm=T)
+
+q.in=q.in+sum(ifelse(q.out.dat$Q<0,abs(q.out.dat$Q),0),na.rm=T)
+#ET
+#S77.ET=as.numeric(gsub('\\"',"",strsplit(report[[1]][58],"\\s+")[[1]][3]))
+#S308.ET=as.numeric(gsub('\\"',"",strsplit(report[[1]][58],"\\s+")[[1]][5]))
+#ET=(mean(c(S308.ET,S77.ET),na.rm=T)/12)*0.75;# pan coeff=0.75
+#if(is.na(ET)){ET=0}else{ET}
+LZ40=mean(DBHYDRO_daily(dates[1]-ddays(5),dates[2],"UT748")$Data.Value,na.rm=T)
+ET=LZ40/12
+ET.AcFt=area.ac*ET
+ET.cfs=ET.AcFt/1.98347
+
+#delta S
+Storage=as.numeric(strsplit(report[[1]][66],"\\s+")[[1]][8])
+volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
+
+#week trend
+week.WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_LAKEOAVG.json"),Date==date.fun(Sys.Date()-ddays(8)))$Value,2)
+if(length(week.WL)==0){
+  WL.week.dat=DBHYDRO_daily(dates[1]-ddays(8),dates[2]-ddays(8),c("16022","12509","12519","16265","15826","FF579","15732"))
+  week.WL=mean(WL.week.dat$Data.Value,na.rm=T)
+  
+}
+#week.WL=as.numeric(strsplit(report[[1]][200],"\\s+\\s+")[[1]][5]);#7-day value
+WL.week.trend=round(WL-week.WL,2)
+
+## Table
+sum.table=data.frame(Area=row.vals,LakeO=c(WL,WL-reg.sch,NA,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
+
+# WCA1 --------------------------------------------------------------------
+url="http://w3.saj.usace.army.mil/h2o/reports/r-wca1.html"
+webpage=read_html(url)
+node.val=html_nodes(webpage,"pre")
+text.vals=html_text(node.val)
+report=strsplit(as.character(text.vals),"\n")
+
+## Stage Elevation
+#WL=as.numeric(strsplit(report[[1]][71],"\\s+")[[1]][8])
+WL=DBHYDRO_breakpoint(dates[1],dates[2],c("AI483","AI481","AI484"))
+WL=ddply(WL,"Station",summarise,mean.val=mean(Data.Value,na.rm=T))
+WL=mean(WL$mean.val,na.rm=T)
+
+#Regulation schedule
+#reg.sch=as.numeric(strsplit(report[[1]][71],"\\s+")[[1]][9])
+reg.sch=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 1_ZONE A1.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
+
+#Inflow
+dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][19:24],"\t"))))
+spl <-strsplit(as.character(dat$data),":")
+dat=data.frame(Structure= sapply(spl, "[", 1), V2 = sapply(spl, "[", 2))
+dat=subset(dat,Structure!= "                                        Speed of Pumps S362,G251,G310 (RPM)")
+spl2=strsplit(as.character(dat$V2),"\\s+")
+q.in.dat=cbind(dat$Structure,data.frame(HW= sapply(spl2, "[", 2), TW = sapply(spl2, "[", 3), Q = sapply(spl2, "[", 4)))
+q.in.dat$Q=as.numeric(as.character(q.in.dat$Q))
+q.in.dat$Q.in=with(q.in.dat,ifelse(Q<0,NA,Q))
+q.in=sum(as.numeric(as.character(q.in.dat$Q.in)),na.rm=T)
+
+#Rainfall
+area.ac=subset(area.table,Area=="WCA1")$area.mi2*640
+
+#From USACE
+#RF=as.numeric(strsplit(report[[1]][60],"\\s+")[[1]][5])/12
+#if(is.na(RF)){RF=0}else{RF}
+#FRom SFWMD
+rf.val='WCA 1_CONSERVATION AREA 1'
+RF=subset(WMD.json(paste0("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/",rf.val,".json")),Date==date.fun(Sys.Date()-ddays(1)))$Value/12
+if(length(RF)==0){RF=DBHYDRO_daily(dates[1],dates[2],"DU551")$Data.Value/12}
+RF.AcFt=area.ac*RF
+RF.cfs=RF.AcFt/1.98347
+
+#Outflow
+dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][28:36],"\t"))))
+spl <-strsplit(as.character(dat$data),":")
+dat=data.frame(Structure= sapply(spl, "[", 1), V2 = sapply(spl, "[", 2))
+dat=subset(dat,Structure!= "  Total S10 Discharge")
+spl2=strsplit(as.character(dat$V2),"\\s+")
+q.out.dat=cbind(dat$Structure,data.frame(HW= sapply(spl2, "[", 2), TW = sapply(spl2, "[", 3), Q = sapply(spl2, "[", 4)))
+q.out.dat$Q=as.numeric(as.character(q.out.dat$Q))
+q.out.dat$Q.out=with(q.out.dat,ifelse(Q<0,NA,Q))
+q.out=sum(q.out.dat$Q.out,na.rm=T)
+q.out=q.out+sum(ifelse(q.in.dat$Q<0,abs(q.in.dat$Q),0),na.rm=T)
+
+q.in=q.in+sum(ifelse(q.out.dat$Q<0,abs(q.out.dat$Q),0),na.rm=T)
+
+#ET
+ET=mean(DBHYDRO_daily(dates[1]-ddays(5),dates[1],"UT744")$Data.Value,na.rm=T)/12
+
+ET.AcFt=area.ac*ET
+ET.cfs=round(ET.AcFt/1.98347,2)
+
+#delta S
+volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
+
+#week trend
+week.WL=DBHYDRO_breakpoint(dates[1]-ddays(8),dates[2]-ddays(8),c("AI483","AI481","AI484"))
+week.WL=ddply(week.WL,"Station",summarise,mean.val=mean(Data.Value,na.rm=T))
+week.WL=mean(week.WL$mean.val,na.rm=T)
+#week.WL=as.numeric(strsplit(report[[1]][96],"\\s+\\s+")[[1]][4])
+WL.week.trend=round(WL-week.WL,2)
+
+tmp=data.frame(WCA1=c(WL,round(WL-reg.sch,2),NA,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
+sum.table=cbind(sum.table,tmp)
+
+# WCA2A -------------------------------------------------------------------
+url="http://w3.saj.usace.army.mil/h2o/reports/r-wca2.html"
+webpage=read_html(url)
+node.val=html_nodes(webpage,"pre")
+text.vals=html_text(node.val,trim=T)
+report=strsplit(as.character(text.vals),"\n")
+
+## Stage Elevation
+#WL=as.numeric(strsplit(report[[1]][50],"\\s+")[[1]][4])
+WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 2A_GA2A17.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+if(length(WL)==0){
+  WL=DBHYDRO_breakpoint(dates[1],dates[2],"AI485")
+  WL=round(mean(WL$Data.Value,na.rm=T),2)
+}
+
+#Regulation schedule
+#reg.sch=as.numeric(strsplit(report[[1]][50],"\\s+")[[1]][5])
+reg.sch=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 2A_ZONE A.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+
+#Inflow
+q.in.dat=data.frame(Structure=substr(readr::read_lines(url)[18:24],3,15),
+           HW=as.numeric(substr(readr::read_lines(url)[18:24],16,21)),
+           TW=as.numeric(substr(readr::read_lines(url)[18:24],26,30)),
+           Q=as.numeric(substr(readr::read_lines(url)[18:24],35,40)))
+q.in.dat$Q=as.numeric(as.character(q.in.dat$Q))
+q.in.dat$Q.in=with(q.in.dat,ifelse(Q<0,NA,Q))
+q.in=sum(as.numeric(as.character(q.in.dat$Q.in)),na.rm=T)
+
+#Rainfall
+area.ac=subset(area.table,Area=="WCA2")$area.mi2*640;
+
+rf.val='WCA 2A_CONSERVATION AREA 2A'
+RF=subset(WMD.json(paste0("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/",rf.val,".json")),Date==date.fun(Sys.Date()-ddays(1)))$Value/12
+if(length(RF)==0){
+  RF.dat=DBHYDRO_breakpoint(dates[1],dates[2],"RQ460")
+  RF=sum(RF.dat$Data.Value,na.rm=T)/12
+}
+RF.AcFt=area.ac*RF
+RF.cfs=RF.AcFt/1.98347
+
+#Outflow
+dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][30:39],"\t"))))
+spl <-strsplit(as.character(dat$data),":")
+dat=data.frame(Structure= sapply(spl, "[", 1), V2 = sapply(spl, "[", 2))
+dat=subset(dat,Structure!= "  Total S11 Discharge")
+spl2=strsplit(as.character(dat$V2),"\\s+")
+q.out.dat=cbind(dat$Structure,data.frame(HW= sapply(spl2, "[", 2), TW = sapply(spl2, "[", 3), Q = sapply(spl2, "[", 4)))
+q.out.dat$Q=as.numeric(as.character(q.out.dat$Q))
+q.out.dat$Q.out=with(q.out.dat,ifelse(Q<0,NA,Q))
+q.out=sum(q.out.dat$Q.out,na.rm=T)
+q.out=q.out+sum(ifelse(q.in.dat$Q<0,abs(q.in.dat$Q),0),na.rm=T)
+
+q.in=q.in+sum(ifelse(q.out.dat$Q<0,abs(q.out.dat$Q),0),na.rm=T)
+
+#ET
+ET.AcFt=area.ac*ET
+ET.cfs=round(ET.AcFt/1.98347,2)
+
+#delta S
+volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
+
+#week trend
+week.WL=as.numeric(strsplit(report[[1]][72],"\\s+\\s+")[[1]][5])
+WL.week.trend=round(WL-week.WL,2)
+
+tmp=data.frame(WCA2=c(WL,WL-reg.sch,NA,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
+sum.table=cbind(sum.table,tmp)
+
+# WCA3A -------------------------------------------------------------------
+url="http://w3.saj.usace.army.mil/h2o/reports/r-wca3.html"
+webpage=read_html(url)
+node.val=html_nodes(webpage,"pre")
+text.vals=html_text(node.val,trim=T)
+report=strsplit(as.character(text.vals),"\n")
+
+## Stage Elevation
+#WL=as.numeric(strsplit(report[[1]][81],"\\s+\\s+")[[1]][3])
+WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 3A_WCA3A_MARSH.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+if(length(WL)==0){
+  WL.dat=DBHYDRO_breakpoint(dates[1],dates[2],c("AI495","AI494","AI493"))
+  WL.dat=ddply(WL.dat,"Station",summarise,mean.val=mean(Data.Value,na.rm=T))
+  WL=round(mean(WL.dat$mean.val,na.rm=T),2)
+}
+
+#Regulation schedule
+#reg.sch=as.numeric(strsplit(report[[1]][81],"\\s+\\s+")[[1]][4])
+
+ZoneD=fromJSON(file="https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 3A_ZONE D.json")
+ZoneD.date=sapply(ZoneD, "[[", 1)
+ZoneD.val=sapply(ZoneD, "[[", 2)
+ZoneD.val[sapply(ZoneD.val,is.null)]<-NA
+ZoneD=data.frame(Date=date.fun(as.POSIXct(ZoneD.date/1000,origin="1970-01-01",tz="GMT")),Value=unlist(ZoneD.val))
+
+ZoneA=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 3A_ZONE A.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+ZoneD=round(subset(ZoneD,Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+WCA3A.RegSch=if(length(ZoneD)==0){"Zone A"}else{"Zone D"}
+reg.sch=if(length(ZoneD)==0){ZoneA}else{ZoneD}
+
+#Hi Water
+Gauge6263=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 3A_AVG_62_63.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+if(length(Gauge6263)==0){
+  Gauge6263.dat=DBHYDRO_breakpoint(dates[1],dates[2],c("AI493","AI492"))
+  Gauge6263.dat=ddply(Gauge6263.dat,"Station",summarise,mean.val=mean(Data.Value,na.rm=T))
+  Gauge6263=round(mean(Gauge6263.dat$mean.val,na.rm=T),2)
+}
+
+#Inflow
+dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][17:27],"\t"))))
+spl <-strsplit(as.character(dat$data),":")
+dat=data.frame(Structure= sapply(spl, "[", 1), V2 = sapply(spl, "[", 2))
+spl2=strsplit(as.character(dat$V2),"\\s+\\s+")
+q.in.dat=cbind(dat$Structure,data.frame(HW= sapply(spl2, "[", 2), TW = sapply(spl2, "[", 3), Q = sapply(spl2, "[", 4)))
+q.in.dat$Q=as.numeric(as.character(q.in.dat$Q))
+q.in.dat$Q.in=with(q.in.dat,ifelse(Q<0,NA,Q))
+q.in=sum(as.numeric(as.character(q.in.dat$Q.in)),na.rm=T)
+
+#Rainfall
+area.ac=subset(area.table,Area=="WCA3A")$area.mi2*640
+
+rf.val='WCA 3A_CONSERVATION AREA 3A'
+RF=subset(WMD.json(paste0("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/",rf.val,".json")),Date==date.fun(Sys.Date()-ddays(1)))$Value/12
+if(length(RF)==0){
+  RF.dat=DBHYDRO_breakpoint(dates[1],dates[2],c("LS270","SD000","JA345","AO627","IW752","LX284","LA366"))
+  RF.dat=ddply(RF.dat,"Station",summarise,sum.val=sum(Data.Value,na.rm=T))
+  RF=mean(RF.dat$sum.val,na.rm=T)/12
+}
+RF.AcFt=area.ac*RF
+RF.cfs=RF.AcFt/1.98347
+
+#Outflow
+dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][32:47],"\t"))))
+spl <-strsplit(as.character(dat$data),":")
+dat=data.frame(Structure= sapply(spl, "[", 1), V2 = sapply(spl, "[", 2))
+dat=subset(dat,!(Structure%in%c("  Total S12 Discharge","  Below S12A    -NR-")))
+spl2=strsplit(as.character(dat$V2),"\\s+\\s+")
+q.out.dat=cbind(dat$Structure,data.frame(HW= sapply(spl2, "[", 2), TW = sapply(spl2, "[", 3), Q = sapply(spl2, "[", 4)))
+q.out.dat$Q=as.numeric(as.character(q.out.dat$Q))
+q.out.dat$Q.out=with(q.out.dat,ifelse(Q<0,NA,Q))
+q.out.dat=subset(q.out.dat,`dat$Structure`!="  S152(II)")
+
+S152=readNWISdv("255154080371300","00060",dates[1],dates[2])$X_00060_00003
+
+q.out=sum(c(q.out.dat$Q.out,S152),na.rm=T)
+q.out=q.out+sum(ifelse(q.in.dat$Q<0,abs(q.in.dat$Q),0),na.rm=T)
+q.in=q.in+sum(ifelse(q.out.dat$Q<0,abs(q.out.dat$Q),0),na.rm=T)
+
+
+#ET
+ET=DBHYDRO_daily(dates[1]-ddays(5),dates[1],c("UD384","US347"))
+ET$Data.Value=with(ET,ifelse(Data.Value<0,NA,Data.Value))
+ET=mean(ET$Data.Value,na.rm=T)/12
+#ET=mean(DBHYDRO_daily(dates[1]-ddays(5),dates[1],c("UD384","US347"))$Data.Value,na.rm=T)/12
+
+
+ET.AcFt=area.ac*ET
+ET.cfs=round(ET.AcFt/1.98347,2)
+
+#delta S
+volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
+
+#week trend
+week.WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 3A_WCA3A_MARSH.json"),Date==date.fun(Sys.Date()-ddays(8)))$Value,2)
+if(length(week.WL)==0){
+week.WL=as.numeric(strsplit(report[[1]][99],"\\s+\\s+")[[1]][5])
+}
+WL.week.trend=round(WL-week.WL,2)
+
+tmp=data.frame(WCA3A=c(WL,WL-reg.sch,Gauge6263-11.6,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
+sum.table=cbind(sum.table,tmp)
+
+# WCA3B -------------------------------------------------------------------
+## Stage Elevation
+WL=as.numeric(strsplit(report[[1]][118],"\\s+\\s+")[[1]][3])
+
+#Regulation schedule
+reg.sch=8.5
+
+#Inflow
+#dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][110:111],"\t"))))
+#spl <-strsplit(as.character(dat$data),":")
+#dat=data.frame(Structure= sapply(spl, "[", 1), V2 = sapply(spl, "[", 2))
+#spl2=strsplit(as.character(dat$V2),"\\s+\\s+")
+#q.in.dat=cbind(dat$Structure,data.frame(HW= sapply(spl2, "[", 2), TW = sapply(spl2, "[", 3), Q = sapply(spl2, "[", 4)))
+#q.in.dat$Q=as.numeric(as.character(q.in.dat$Q))
+#q.in.dat$Q.in=with(q.in.dat,ifelse(Q<0,NA,Q))
+#q.in=sum(as.numeric(as.character(q.in.dat$Q.in)),na.rm=T)
+
+#S152=readNWISdv("255154080371300","00060",dates[1],dates[2])$X_00060_00003
+S151=DBHYDRO_daily(dates[1],dates[2],"91396")$Data.Value
+q.in=sum(c(S152,S151),na.rm=T)
+
+#Rainfall
+area.ac=subset(area.table,Area=="WCA3B")$area.mi2*640;
+
+RF.AcFt=area.ac*RF
+RF.cfs=RF.AcFt/1.98347
+
+#Outflow
+#dat=data.frame(data=as.matrix(unlist(strsplit(report[[1]][113:114],"\t"))))
+#spl <-strsplit(as.character(dat$data),":")
+#dat=data.frame(Structure= sapply(spl, "[", 1), V2 = sapply(spl, "[", 2))
+#spl2=strsplit(as.character(dat$V2),"\\s+\\s+")
+#q.out.dat=cbind(dat$Structure,data.frame(HW= sapply(spl2, "[", 2), TW = sapply(spl2, "[", 3), Q = sapply(spl2, "[", 4)))
+#q.out.dat$Q=as.numeric(as.character(q.out.dat$Q))
+#q.out.dat$Q.out=with(q.out.dat,ifelse(Q<0,NA,Q))
+#q.out=sum(q.out.dat$Q.out,na.rm=T)
+#q.out=q.out+sum(ifelse(q.in.dat$Q<0,abs(q.in.dat$Q),0),na.rm=T)
+
+#q.in=q.in+sum(ifelse(q.out.dat$Q<0,abs(q.out.dat$Q),0),na.rm=T)
+
+q.out.dat=DBHYDRO_daily(dates[1],dates[2],c("91477","91491"))
+q.out=sum(q.out.dat$Data.Value)
+
+#ET
+ET.AcFt=area.ac*ET
+ET.cfs=round(ET.AcFt/1.98347,2)
+
+#delta S
+volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
+
+#week trend
+week.date=as.Date(as.Date(Sys.Date())-ddays(8))
+week.WL=DBHYDRO_daily(week.date,week.date,"16543")$Data.Value
+WL.week.trend=round(WL-week.WL,2)
+
+tmp=data.frame(WCA3B=c(WL,WL-reg.sch,WL-8.5,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
+sum.table=cbind(sum.table,tmp)
+
+# Holeyland ---------------------------------------------------------------
+## Stage Elevation
+WL=DBHYDRO_daily(dates[1],dates[1],"13157")$Data.Value
+
+#Regulation schedule
+dates.df=data.frame(DATE=seq(as.Date(paste(as.numeric(format(Sys.Date(),"%Y")),1,01,sep="-")),as.Date(paste(as.numeric(format(Sys.Date(),"%Y"))+1,1,01,sep="-")),"1 days"))
+dates.df$reg.sch.val=with(dates.df,ifelse(format(dates.df$DATE,"%m/%d")%in%c("11/01","01/01"),12,ifelse(format(dates.df$DATE,"%m/%d")%in%c("06/01","07/01"),11,NA)))
+dates.df$reg.sch.inter=na.approx(dates.df$reg.sch.val)
+
+reg.sch=subset(dates.df,DATE==Sys.Date()-ddays(1))$reg.sch.inter
+#subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/HOLEYLAND_ZONE A.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
+
+WL-reg.sch
+
+#Inflow
+q.in=DBHYDRO_daily(dates[1],dates[1],"90911")$Data.Value
+q.in=if(is.na(q.in)==T){0}else{q.in}
+
+#Rainfall
+area.ac=subset(area.table,Area=="HL")$area.mi2*640
+area.ft2=area.ac*43560
+
+RF=DBHYDRO_daily(dates[1],dates[1],"AN524")$Data.Value
+if(is.na(RF)){RF=0}else{RF}
+RF=RF/12
+RF.AcFt=area.ac*RF
+RF.cfs=RF.AcFt/1.98347
+
+#Outflow
+q.out.dat=DBHYDRO_daily(dates[1],dates[1],c("90913","90914","90915"))$Data.Value
+q.out=sum(q.out.dat,na.rm=T)
+q.out=if(is.na(q.out)==T){0}else{q.out}
+
+#ET
+ET=mean(DBHYDRO_daily(dates[1]-ddays(5),dates[1],"UP568")$Data.Value,na.rm=T)/12
+ET.AcFt=area.ac*ET
+ET.cfs=round(ET.AcFt/1.98347,2)
+
+#delta S
+volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
+
+#week trend
+week.WL=DBHYDRO_daily(as.Date(Sys.Date())-ddays(8),as.Date(Sys.Date())-ddays(8),"13157")$Data.Value
+WL.week.trend=round(WL-week.WL,2)
+
+tmp=data.frame(HL=c(WL,WL-reg.sch,WL-12.5,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
+sum.table=cbind(sum.table,tmp)
+
+# Rotenberger -------------------------------------------------------------
+## Stage Elevation
+WL=DBHYDRO_breakpoint(dates[1],dates[1],c("VW864","W1954"))
+WL$Data.Value[WL$Data.Value==-999.00|WL$Data.Value<0]=NA
+WL=ddply(WL,c("Station","DATE"),summarise,mean.val=round(mean(Data.Value,na.rm=T),2))
+WL=mean(WL$mean.val,na.rm=T)
+# WL=mean(DBHYDRO_daily(dates[1],dates[1],c("W1953","VW863"))$Data.Value,na.rm=T)
+
+# WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/ROTENBERGER_ROTT_MARSH.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value,2)
+# if(length(WL)==0){WL=NA}
+
+dates.df=data.frame(DATE=seq(as.Date(paste(as.numeric(format(Sys.Date(),"%Y")),1,01,sep="-")),as.Date(paste(as.numeric(format(Sys.Date(),"%Y"))+1,1,01,sep="-")),"1 days"))
+dates.df$reg.sch.val=with(dates.df,ifelse(format(dates.df$DATE,"%m/%d")%in%c("06/01"),12.12,
+                                          ifelse(format(dates.df$DATE,"%m/%d")%in%c("07/01"),12.60,
+                                                 ifelse(format(dates.df$DATE,"%m/%d")%in%c("09/01","01/01"),13.25,NA))))
+dates.df$reg.sch.inter=na.approx(dates.df$reg.sch.val);#ZoneA
+
+reg.sch=subset(dates.df,DATE==Sys.Date()-ddays(1))$reg.sch.inter
+WL-reg.sch
+
+#Inflow
+q.in=DBHYDRO_daily(dates[1],dates[1],"91195")$Data.Value
+q.in=if(is.na(q.in)==T){0}else{q.in}
+
+#Rainfall
+area.ac=subset(area.table,Area=="Roten")$area.mi2*640
+
+RF.AcFt=area.ac*RF
+RF.cfs=RF.AcFt/1.98347
+
+#Outflow
+q.out.dat=DBHYDRO_daily(dates[1],dates[1],c("91186","91187","91188"))$Data.Value
+q.out=sum(q.out.dat,na.rm=T)
+if(is.na(q.out)==T){0}else{q.out}
+
+#ET
+ET.AcFt=area.ac*ET
+ET.cfs=round(ET.AcFt/1.98347,2)
+
+#delta S
+volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
+
+#week trend
+week.date=as.Date(as.Date(Sys.Date())-ddays(8))
+week.WL=mean(DBHYDRO_daily(week.date,week.date,c("W1953","VW863"))$Data.Value,na.rm=T)
+WL.week.trend=if(is.na(week.WL)){NA}else{round(WL-week.WL,2)}
+
+tmp=data.frame(Roten=c(WL,WL-reg.sch,WL-13.5,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
+sum.table=cbind(sum.table,tmp)
+sum.table[,2:8]=format(round(sum.table[,2:8],2),scientific = F)
+
+#write.csv(sum.table,paste0(path,"/summary_table.csv"),row.names=F)
+```
+
+
+```{r table,echo=F}
+knitr::kable(sum.table,
+             col.names = c("Area","Lake Okeechobee","WCA1","WCA2A","WCA3A","WCA3B","Holey Land","Rotenberger"),
+             align=c("c"),row.names = F,escape=F)%>%
+  kable_styling(bootstrap_options = "striped", full_width = F)%>%
+  row_spec(0,background=rgb(68/255,114/255,196/255,1),color="white",bold=T)%>%
+  row_spec(seq(2,10,2),background=rgb(217/255,225/255,242/255,1))%>%
+  column_spec(1,background=rgb(68/255,114/255,196/255,1),color="white",bold=T)%>%
+  column_spec(2:8,color="black")%>%
+  footnote(general=paste("Data retrieved from USACE daily reports (http://w3.saj.usace.army.mil/h2o/reports.htm) and DBHYDRO for observation recorded",format(as.Date(Sys.Date())-ddays(1),"%b %d, %Y")))
+#,
+#           number=c(paste0("Area of Lake Okeechobee: ",area.table[1,]$area.mi2," mi\u00B2 (",area.table[1,]$area.mi2*640," acres)"),
+#           paste0("Area of WCA1: ",area.table[2,]$area.mi2," mi\u00B2 (",area.table[2,]$area.mi2*640," acres)"),
+#           paste0("Area of WCA2A: ",area.table[3,]$area.mi2," mi\u00B2 (",area.table[3,]$area.mi2*640," acres)"),
+#           paste0("Area of WCA3A: ",area.table[4,]$area.mi2," mi\u00B2 (",area.table[4,]$area.mi2*640," acres)"),
+#           paste0("Area of WCA3B: ",area.table[5,]$area.mi2," mi\u00B2 (",area.table[5,]$area.mi2*640," acres)"),
+#           paste0("Area of Holey Land: ",area.table[6,]$area.mi2," mi\u00B2 (",area.table[6,]$area.mi2*640," acres)"),
+#           paste0("Area of Rotenberger: ",area.table[7,]$area.mi2," mi\u00B2 (",area.table[7,]$area.mi2*640," acres)")),
+#           alphabet=c("WCA1 and WCA2 ET estimated from SFWMD 1-8C/LOXWS","WCA3 ET estimated from SFWMD S140W/3AS3WX",
+#                    "Holey Land and Rotenberger ET estimated from SFWMD ROTNWX weather station",
+#                    "Holey Land and Rotenberger rainfall estimated from SFWMD G373_R weather station"))
+```
+
+***
+
+<!-- #### Lake Okeechobee is currently in the "`r paste0(LakeO.band)`". See [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-oke.html){target="_blank"} for more information. 
+-->
+
+*  Data sources information can be found at this [external link](http://publicfiles.dep.state.fl.us/owp/SalinityReports/DailySystemReport_Table_datasources.pdf){target="_blank"}.
+
+
+## Salinity condition for Adult Oysters
+
+```{r salinity data, echo=F,warning=F}
+sal.dbkey=data.frame(SITE=c(rep("CCORAL",2),rep("FORTMYERSM",2),rep("MARKH",2),rep("SANIB1",2),rep("HR1",2)),PARAM=rep(c("WT","SPC"),5),DBKEY=c("UO834","AJ007","88287","88292","88200","88204","WN367","WN369","IX678","IX675"),Region=c(rep("Caloosahatchee",8),rep("St. Lucie",2)))
+#sal.dbkey=subset(sal.dbkey,SITE%in%c("CCORAL","MARKH"))
+# sal.dbkey=subset(sal.dbkey,SITE%in%c("MARKH"))
+sal.dbkey=subset(sal.dbkey,SITE!="SANIB1");#Site not reporting
+sal.dbkey=merge(sal.dbkey,data.frame(SITE=c("CCORAL","MARKH","SANIB1"),SITE2=c("Cape Coral","Shell Point","Sanibel")),"SITE")
+
+sal.dat=data.frame()
+for(i in 1:nrow(sal.dbkey)){
+ tmp=DBHYDRO_breakpoint(dates[1],dates[2],sal.dbkey$DBKEY[i])
+ tmp$DBKEY=as.character(sal.dbkey$DBKEY[i])
+ sal.dat=rbind(sal.dat,tmp)
+}
+sal.dat=merge(sal.dat,sal.dbkey,"DBKEY")
+sal.dat$Data.Value=with(sal.dat,ifelse(Data.Value==-999,NA,Data.Value))
+
+sal.dat.xtab=cast(sal.dat,SITE+SITE2+Region+DATETIME~PARAM,value="Data.Value",mean)
+sal.dat.xtab=sal.dat.xtab[order(sal.dat.xtab$SITE,sal.dat.xtab$DATETIME),]
+## Salinity conversion basn UNESCO "Algorithms for computation of fundamental propoerties of seawater"
+sal.dat.xtab$Calc.Sal=with(sal.dat.xtab,SalinityCalc(SPC,WT))
+sal.dat.xtab$Calc.Sal=with(sal.dat.xtab,ifelse(Calc.Sal<0|Calc.Sal==0,NA,Calc.Sal))
+sal.dat.xtab$Date=date.fun(sal.dat.xtab$DATETIME)
+
+cal.sal=ddply(sal.dat.xtab,c("SITE2","Region","Date"),summarise,mean.val=mean(Calc.Sal,na.rm=T))
+
+
+##
+sites=c("02277100","02277110")
+params=c("00010","00095","00480");#temp, spc,sal
+vars=c("agency_cd", "site_no", "Date", "TOP_Wtemp", "TOP_Wtemp_cd","TOP_SpCond", "TOP_SpCond_cd");#,"TOP_Sal","TOP_Sal_cd")
+  stl.USGS.dat=data.frame()
+  for(i in 1:length(sites)){
+    if(nrow(readNWISdv(sites[i],params,dates[1],dates[2]))==0){next}
+       
+    tmp=readNWISdv(sites[i],params,dates[1],dates[2])
+    tmp=ColumnRename(tmp)[,vars]
+    stl.USGS.dat=rbind(stl.USGS.dat,tmp)
+  }
+
+#stl.USGS.dat=readNWISdv(sites,params,dates[1],dates[2])
+#stl.USGS.dat=ColumnRename(stl.USGS.dat)
+#stl.USGS.dat=stl.USGS.dat[,vars] 
+if(nrow(stl.USGS.dat)==0){
+  stl.sal=data.frame(SITE2=c("US 1 Bridge","A1A"),
+                     Region="St. Lucie",
+                     Date=unique(cal.sal$Date),
+                     mean.val=NA)
+}else{
+stl.USGS.dat=merge(stl.USGS.dat,data.frame(site_no=c("02277100","02277110"),SITE=c("STL_RIVER","STL_STPT")),by="site_no",all.y=T)
+ stl.USGS.dat$Date=as.POSIXct(strptime(stl.USGS.dat$Date,"%F"),tz="EST")
+# 
+ stl.USGS.dat.clean=melt(stl.USGS.dat,id.vars=c("agency_cd","site_no","SITE","Date"))
+# 
+ spl <-strsplit(as.character(stl.USGS.dat.clean$variable),"_")
+ stl.USGS.dat.clean=cbind(stl.USGS.dat.clean,data.frame(Depth=sapply(spl, "[", 1), param = sapply(spl, "[", 2),flag = sapply(spl, "[", 3)))
+ stl.USGS.dat.clean=subset(stl.USGS.dat.clean,is.na(flag)==T)
+ stl.USGS.dat.clean$value=as.numeric(stl.USGS.dat.clean$value)
+ stl.USGS.dat.clean=cast(stl.USGS.dat.clean,site_no+Date+Depth~param,value="value",mean)
+ stl.USGS.dat.clean=subset(stl.USGS.dat.clean,Depth=="TOP")
+ stl.USGS.dat.clean[stl.USGS.dat.clean==-999999]<-NA
+ stl.USGS.dat.clean$Sal=with(stl.USGS.dat.clean,SalinityCalc(SpCond,Wtemp))
+ 
+ stl.USGS.dat=merge(stl.USGS.dat.clean,data.frame(site_no=c("02277100","02277110"),SITE=c("STL_RIVER","STL_STPT"),SITE2=c("US 1 Bridge","A1A"),Region=c(rep("St. Lucie",2))),by="site_no")
+ stl.USGS.dat$mean.val=stl.USGS.dat$Sal
+ vars=c("SITE2","Region","Date","mean.val")
+ stl.sal=stl.USGS.dat[,vars]
+}
+
+
+ sal.all=rbind(cal.sal,stl.sal,data.frame(SITE2="Sanibel",Region="Caloosahatchee",Date=date.fun(dates[1]),mean.val=NA))
+ sal.all$sal.class.oyster=with(sal.all,ifelse(mean.val<5|mean.val>35,"Poor",ifelse(mean.val>5&mean.val<=10,"Fair",ifelse(mean.val>10&mean.val<30,"Good",ifelse(mean.val>30&mean.val<35,"Fair",NA)))))
+# 
+ sal.all$SITE2=factor(sal.all$SITE2,levels=c("Sanibel","Shell Point","Cape Coral","US 1 Bridge","A1A"))
+ sal.all$mean.val=round(sal.all$mean.val,1)
+ sal.all=sal.all[order(sal.all$SITE2),]
+```
+
+```{r sal table,echo=F}
+ options(knitr.kable.NA = 'NR')
+ vars=c("Region","SITE2","mean.val","sal.class.oyster")
+ knitr::kable(sal.all[,vars],
+              col.names = c("Area","Site","Salinity (PSU)","Salinity Condition"),
+              align=c("l","l","c","c"),row.names = F,escape=F)%>%
+   kable_styling(bootstrap_options = "striped", full_width = F)%>%
+   collapse_rows(column=1,valign="top")
+
+```
+
+## East Coast Protection Levees
+```{r ECP,echo=F,warning=F}
+stg.sites=data.frame(SITE=c("G311_T","1-8C","2-19","2B-99","L37WCA3A","3-76","3-71","SHARK.1H","3-65"),
+                     BK=c("TA925","AI482","AI487","AI491","AN719",NA,"AI497",NA,"AI495"),
+                     DA=c("TA924","15810","16530","16540","AN718","16539","16548","01367","16538"))
+
+stg.sites.usgs=data.frame(SITE=c("3-76","SHARK.1H"),
+                          SITENO=c("260037080303401","254754080344300"))
+
+table.vals=data.frame(WCA=c("STA-1E",1,"2A","2B","2B","3A",rep("3B",3),rep("3A",3)),
+                      Levee=c("L-85","L-40","L36","L-35","L-35A","L-37","L-33","L-30","L-29 (3)","L-29 (2)","L-29 (1)","L-28"),
+                      SITE=c("G311_T","1-8C","2-19","2B-99","2B-99","L37WCA3A","3-76","3-71","SHARK.1H",rep("3-65",3)),
+                      construct=c(23.60,26.00,rep(22.00,3),rep(20.00,3),14.00,14.80,17.50,17.50),
+                      week.inspect=c(18.50,18.05,15.02,11.55,11.55,10.48,9.00,9.03,9.05,rep(11.51,3)),
+                      semiwk.inspect=c(19.00,18.55,15.52,12.05,12.05,10.98,9.50,9.53,9.55,rep(12.01,3)),
+                      da.inspect=c(19.50,19.05,16.02,12.55,12.55,11.48,10.00,10.03,10.05,rep(12.51,3)))
+### 
+stgdat.bk=DBHYDRO_breakpoint(Sys.Date(),Sys.Date(),stg.sites$BK)
+stgdat.bk=merge(stgdat.bk,stg.sites[,c("SITE","BK")],by.x="DBKEY",by.y="BK")
+
+usgs.stgdat=readNWISuv(stg.sites.usgs$SITENO,"00065",Sys.Date(),Sys.Date())
+usgs.stgdat=merge(usgs.stgdat,stg.sites.usgs,by.x="site_no",by.y="SITENO")
+attributes(usgs.stgdat$dateTime)$tzone="EST"
+usgs.stgdat$DATETIME=usgs.stgdat$dateTime
+usgs.stgdat$Data.Value=usgs.stgdat$X_00065_00000
+
+stg.dat=rbind(stgdat.bk[,c("SITE","DATETIME","Data.Value")],usgs.stgdat[,c("SITE","DATETIME","Data.Value")])
+stg.dat$SITE=as.character(stg.dat$SITE)
+
+stg.dat.maxdate=data.frame(do.call(rbind,lapply(split(stg.dat,stg.dat$SITE),function(x) x[which.max(x$DATETIME),])))
+
+finalstage=merge(stg.dat.maxdate,table.vals,"SITE",all.y=T)
+finalstage=finalstage[order(match(finalstage$SITE,table.vals$SITE)),]
+finalstage=finalstage[order(match(finalstage$Levee,table.vals$Levee)),]
+vars=c("WCA", "Levee", "SITE", "construct","Data.Value", "week.inspect", "semiwk.inspect", 
+       "da.inspect")
+finalstage=finalstage[,vars]
+```
+
+
+```{r ECPL table,echo=F}
+options(knitr.kable.NA = '---')
+knitr::kable(finalstage,row.names=F,escape=F,
+    col.names=c("WCA","Levee","Monitoring<br>Station","Construction<br>Grade","Current<br>Value", "Weekly<br>Inspection<br>Water Level", "Semi-Weekly<br>Inspection<br>Water Level", "Daily<br>Inspection<br>Water Level"),align = c("l","l","l","c","c","c","c","c"))%>%
+  kable_styling(bootstrap_options = "striped",full_width = F)%>%
+  row_spec(0,color="black",bold=T)%>%
+  row_spec(seq(2,10,2),background="azure2")%>%
+  footnote(general=c("All data in feet (NGVD29)",paste("Data retrieved from DBHYDRO & USGS on",format(Sys.Date(),"%b %d, %Y"),"at",format(Sys.time(),"%H:%M"))))
+
+```  
+
+
+## NOAA forecasts
+```{r, out.width="60%",echo=F,fig.align="center"}
+knitr::include_graphics("https://www.cpc.ncep.noaa.gov/products/predictions/30day/off15_prcp.gif")
+```
+<font size=3><center>NOAA offical 30-day precipitation forecasts. (Data Source: [NOAA](https://www.cpc.ncep.noaa.gov/products/forecasts/month_to_season_outlooks.php)).</center></font>
+
+<br>
+
+```{r, out.width="60%",echo=F,fig.align="center"}
+knitr::include_graphics("https://www.cpc.ncep.noaa.gov/products/predictions/long_range/lead01/off01_prcp.gif")
+
+monthseq=seq(Sys.Date(),as.Date(Sys.Date()+lubridate::duration(3,"months")),"month")[1:3]
+yr.val.txt=if(length(unique(format(monthseq,"%Y")))==1){unique(format(monthseq,"%Y"))}else{paste(c(unique(format(monthseq,"%Y"))[1],unique(format(monthseq,"%y"))[2]),collapse="/")}
+
+```
+<font size=3><center>NOAA offical 3-month precipitation forecasts for `r paste(paste(format(monthseq,"%b"),collapse="-"),yr.val.txt)`. (Data Source: [NOAA](https://www.cpc.ncep.noaa.gov/products/forecasts/month_to_season_outlooks.php)).</center></font>
+
+
+
+## SFWMD Raindar Estimates
+
+```{r, out.width="60%",echo=FALSE,fig.align="center"}
+knitr::include_graphics("https://apps.sfwmd.gov/sfwmd/common/images/weather/raindar_3d.gif")
+```
+<font size=3><center>District Wide Provisional Rainfdar 3-Day estimate (Data Source: [SFWMD](https://www.sfwmd.gov/weather-radar/rainfall-historical/basin-rainfall-last-3days)).</center></font>
+
+## SFWMD Weather Forecast
+```{r echo=F}
+htmltools::tags$iframe(title="weather",src="https://apps.sfwmd.gov/sfwmd/common/images/weather/forecast.html",width="100%",height="550")
+```
+<br>
+
+## SFWMD Tropcial Outlook
+```{r echo=F}
+htmltools::tags$iframe(title="tropical",src="https://apps.sfwmd.gov/sfwmd/common/images/weather/tropical.html",width="100%",height="550")
+
+```
+<br>
+
+<!--
+## Gulf of Mexico Harmful Algal Bloom Bulletin
+
+From the Tides and Currents NOAA [Webpage](https://tidesandcurrents.noaa.gov/hab/gomx.html){target="_blank"}.
+
+```{r, out.width="100%",echo=FALSE,fig.align="center"}
+knitr::include_graphics("https://tidesandcurrents.noaa.gov/hab/gomx_data/conditions/conditions_report_SFL.jpg")
+```
+--->
+<br>
+
+***

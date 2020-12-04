@@ -1,0 +1,88 @@
+---
+title: "Daily System Report - Data Sources"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document is intended to include data sources used to complie information for the [Daily System Report Table](http://publicfiles.dep.state.fl.us/owp/SalinityReports/DailySystemReport_Table.html). 
+
+### Data Sources
+*  __Lake Okeechobee__
+    + Water Level: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-oke.html){target="_blank"}
+    + Regulation Schedule: Low Management Band - [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/Lake_Okeechobee_In.html){target="_blank"}
+    + Total Structure Discharge: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-oke.html){target="_blank"}
+    + Precipitation: [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/Lake_Okeechobee_In.html){target="_blank"}
+    + Estimate Evapotranspiration: 5-day average ET from site LZ40 (DBKEY: UT748) [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"}
+    + Water Level Trend: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-oke.html){target="_blank"}
+
+* __WCA-1__
+    + Water Level: [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (Calcualted using DBKEYS AI483, AI481 & AI484)
+    + Regulation Schedule: Zone A1 - [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA1_In.html){target="_blank"}
+    + Total Structure Discharge: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-wca1.html){target="_blank"}
+    + Precipitation: [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA1_In.html){target="_blank"}
+    + Estimate Evapotranspiration: 5-day average ET from site LOXWS (DBKEY: UT748) [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"}
+    + Water Level Trend: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-wca1.html){target="_blank"}
+    
+* __WCA-2A__
+    + Water Level: Site 2-17 [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA2A_In.html){target="_blank"}
+    + Regulation Schedule: Zone A - [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA2A_In.html){target="_blank"}
+    + Total Structure Discharge: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-wca2.html){target="_blank"}
+    + Precipitation: [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA2A_In.html){target="_blank"}
+    + Estimate Evapotranspiration: 5-day average ET from site LOXWS (DBKEY: UT748) [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"}
+    + Water Level Trend: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-wca2.html){target="_blank"}
+    
+* __WCA-3A__
+    + Water Level: 3-Gauge Average [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA3A_In.html){target="_blank"}
+    + Regulation Schedule: [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA3A_In.html){target="_blank"}
+    + High Closure Critera: High water recreational criteria for WCA-3A is 11.6 Ft (NGVD29)
+    + Total Structure Discharge: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-wca2.html){target="_blank"}
+    + Precipitation: [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA3A_In.html){target="_blank"}
+    + Estimate Evapotranspiration: 5-day average ET from site S140WX and 3AS3WX (DBKEY: UD384 & US347, respecitvely) [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} 
+    + Water Level Trend: [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-wca3.html){target="_blank"}
+    
+* __WCA-3B__
+    + Water Level: Site 71 [USACE Report](http://w3.saj.usace.army.mil/h2o/reports/r-wca3.html){target="_blank"}
+    + Regulation Schedule: 8.5 Ft (NGVD29)
+    + High Closure Critera: 8.5 Ft (NGVD29)
+    + Total Structure Discharge: SFWMD and USGS data for S152, S151 (Inflow), S31 and S337 (Outflow). No data available for S355A and B
+    + Precipitation: [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/WCA3A_In.html){target="_blank"}
+    + Estimate Evapotranspiration: 5-day average ET from site S140WX and 3AS3WX (DBKEY: UD384 & US347, respecitvely) [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} 
+    + Water Level Trend: [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"}(DBKEY 16543).
+    
+* __Holey Land WMA__
+    + Water Level: G203D [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (DBKEY 13157)
+    + Regulation Schedule: Zone A - [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/Holey_Land_In.html){target="_blank"}
+    + High Closure Critera: 12.5 Ft (NGVD29)
+    + Total Structure Discharge: G200, G204, G205 and G206 [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (DBKEYS 90911, 90913, 90914, 90915)
+    + Precipitation: G373 Rainfall station [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (DBKEYS AN524)
+    + Estimate Evapotranspiration: 5-day average ET from site ROTNWX (DBKEY UP568) [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} 
+    + Water Level Trend: [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"}(DBKEY 13157)
+  
+* __Rotenberger WMA__
+    + Water Level: ROTTNGM and ROTTSGW [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (DBKEY W1953, VW863)
+    + Regulation Schedule: Zone A - [SFWMD Hydrographs](https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/Rotenberger.html){target="_blank"}
+    + High Closure Critera: 12.5 Ft (NGVD29)
+    + Total Structure Discharge: G411, G402C, G402B and G402A [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (DBKEYS 91195, 91186, 91187, 91188)
+    + Precipitation: G373 Rainfall station [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (DBKEYS AN524)
+    + Estimate Evapotranspiration: 5-day average ET from site ROTNWX (DBKEY UP568) [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"}
+    + Water Level Trend: [DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"}(DBKEY W1953, VW863)  
+
+* __East Coast Protection Levees__
+    + Water Level: G311_T, 1-8C, 2-19, 2B-99, 3-65, L37WCA3A, 3-71
+[DBHYDRO](https://my.sfwmd.gov/dbhydroplsql/show_dbkey_info.main_menu){target="_blank"} (DBKEYS TA925, AI482, AI487, AI491, AI495, AN719, AI497)
+    + Water Level: 3-76, SHARK.1H
+[USGS NWIS ](https://waterdata.usgs.gov/nwis/rt){target="_blank"} (Site Numbers 260037080303401, 254754080344300)    
+    
+
+***
+
+`r paste("Updated",as.POSIXct(Sys.time(),"%Y-%m-%d",tz=""))`
+
+***
