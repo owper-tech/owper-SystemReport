@@ -112,10 +112,23 @@ if(length(WL)==0|is.na(WL)){
 reg.sch=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_LOW.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
 
 # Inflow
-inflow.g=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_GRAVITY_INFLOWS.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
-inflow.p=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_PUMP_INFLOWS.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
+Okee.inflow=data.frame(SITE=c("S65E","S65EX1","S154","S84","S84X","S71","S191","S133","S127","S129","S131","S135","S2","S3","S4"),
+                       DBKEY=c("91656","AL760","91401","91687","91686","91668","91429","91377","91371","91372","91375","91378","91473","91599","91608"))
+Okee.inflow.bk=data.frame(SITE=c("S72"),DBKEY=c("87640"))
+okee.inflow.nwis=data.frame(SITE=c("Fisheating Cr","S72"),
+                            siteno=c("02257000","02259100"))
 
-q.in=sum(c(inflow.g,inflow.p),na.rm=T)
+inflow1=DBHYDRO_daily(dates[1],dates[2],Okee.inflow$DBKEY)
+# sum(subset(inflow1,Data.Value>0)$Data.Value,na.rm=T)
+# inflow2=DBHYDRO_breakpoint(dates[1],dates[2],Okee.inflow.bk$DBKEY)
+inflow3=readNWISdv(okee.inflow.nwis$siteno,"00060",dates[1],dates[2])
+q.in=sum(c(subset(inflow1,Data.Value>0)$Data.Value,subset(inflow3,X_00060_00003>0)$X_00060_00003),na.rm=T)
+
+
+# inflow.g=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_GRAVITY_INFLOWS.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
+# inflow.p=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_PUMP_INFLOWS.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
+# 
+# q.in=sum(c(inflow.g,inflow.p),na.rm=T)
 
 # Rainfall
 area.ac=subset(area.table,Area=="LakeO")$area.mi2*640
@@ -133,18 +146,30 @@ RF.AcFt=area.ac*RF
 RF.cfs=RF.AcFt/1.98347
 
 # Outflow
-outflow.g=subset(WMD.json(path="https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_GRAVITY_OUTFLOWS.json",type="2"),Date==date.fun(Sys.Date()-ddays(1)))$Value
-if(outflow.g<0){
-  q.in=sum(c(q.in,abs(outflow.g)))
-  outflow.g=0
-  }
+Okee.outflow=data.frame(SITE=c("S135","S127","S129","S131","S354","S351","S352","S77","S308"),
+                        DBKEY=c("91379","91370","91373","91376","91513","91508","91510","DJ235","DJ239"))
+okee.outflow.nwis=data.frame(SITE=c("L8"),
+                            siteno=c("265501080364900"))
+outflow1=DBHYDRO_daily(dates[1],dates[2],Okee.outflow$DBKEY)
+outflow3=readNWISdv(okee.outflow.nwis$siteno,"00060",dates[1],dates[2])
+q.out=sum(c(subset(outflow1,Data.Value>0)$Data.Value,subset(outflow3,X_00060_00003>0)$X_00060_00003),na.rm=T)
 
-outflow.p=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_USACE_OUTFLOWS.json",type="2"),Date==date.fun(Sys.Date()-ddays(1)))$Value
-if(outflow.p<0){
-  q.in=sum(c(q.in,abs(outflow.p)))
-  outflow.p=0
-}
-q.out=sum(c(outflow.g,outflow.p))
+q.in=sum(c(q.in,
+           abs(subset(outflow1,Data.Value<0)$Data.Value),
+           abs(subset(outflow3,X_00060_00003<0)$X_00060_00003)),na.rm=T)
+# outflow.g=subset(WMD.json(path="https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_GRAVITY_OUTFLOWS.json",type="2"),Date==date.fun(Sys.Date()-ddays(2)))$Value
+# if(outflow.g<0){
+#   q.in=sum(c(q.in,abs(outflow.g)))
+#   outflow.g=0
+#   }
+# 
+# outflow.p=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_USACE_OUTFLOWS.json",type="2"),Date==date.fun(Sys.Date()-ddays(1)))$Value
+# if(outflow.p<0){
+#   q.in=sum(c(q.in,abs(outflow.p)))
+#   outflow.p=0
+# }
+# q.out=sum(c(outflow.g,outflow.p))
+
 
 # ET 
 LZ40=mean(DBHYDRO_daily(dates[1]-ddays(5),dates[2],"UT748")$Data.Value,na.rm=T)
@@ -156,7 +181,8 @@ ET.cfs=ET.AcFt/1.98347
 volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
 
 # week trend
-week.WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_LAKEOAVG.json"),Date==date.fun(Sys.Date()-ddays(8)))$Value,2)
+#week.WL=round(subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/L_OKEECHOBEE_LAKEOAVG.json"),Date==date.fun(Sys.Date()-ddays(8)))$Value,2)
+week.WL=data.frame()
 if(length(week.WL)==0){
   WL.week.dat=DBHYDRO_daily(dates[1]-ddays(8),dates[2]-ddays(8),c("16022","12509","12519","16265","15826","FF579","15732"))
   week.WL=mean(WL.week.dat$Data.Value,na.rm=T)
@@ -371,9 +397,8 @@ volume.gain=(q.in+RF.cfs)-(q.out+ET.cfs)
 
 # week trend
 week.date=as.Date(as.Date(Sys.Date())-ddays(8))
-week.WL=DBHYDRO_daily(week.date,week.date,"16543")$Data.Value
+week.WL=mean(DBHYDRO_breakpoint(week.date,week.date,"AI497")$Data.Value)
 WL.week.trend=round(WL-week.WL,2)
-
 tmp=data.frame(WCA3B=c(WL,WL-reg.sch,WL-8.5,q.in,RF.cfs,q.out,ET.cfs,volume.gain,RF*12,ET*12,WL.week.trend))
 sum.table=cbind(sum.table,tmp)
 
