@@ -207,7 +207,9 @@ WL=mean(WL$mean.val,na.rm=T)
 reg.sch=subset(WMD.json("https://apps.sfwmd.gov/sfwmd/weatherdata/hydrographs/data/WCA 1_ZONE A1.json"),Date==date.fun(Sys.Date()-ddays(1)))$Value
 
 # Inflow
-dat=DBHYDRO_daily(dates[1],dates[2],c("91517","90973","90934","91012"))
+# dat=DBHYDRO_daily(dates[1],dates[2],c("91517","90973","90934","91012"))
+dat=DBHYDRO_breakpoint(dates[1],dates[2],c("64267","64308","64349","65115"))
+dat=ddply(dat,"Station",summarise,Data.Value=mean(Data.Value,na.rm=T))
 q.in=sum(dat$Data.Value,na.rm=T)
 
 # Rainfall
@@ -385,8 +387,10 @@ RF.AcFt=area.ac*RF
 RF.cfs=RF.AcFt/1.98347
 
 # Outflow
-q.out.dat=DBHYDRO_daily(dates[1],dates[2],c("91477","91491"))
-q.out=sum(q.out.dat$Data.Value)
+# q.out.dat=DBHYDRO_daily(dates[1],dates[2],c("91477","91491"))
+q.out.dat=DBHYDRO_breakpoint(dates[1],dates[2],c("65076","65090"))
+q.out.dat=ddply(q.out.dat,c("Station","DATE"),summarise,Data.Value=mean(Data.Value,na.rm=T))
+q.out=sum(q.out.dat$Data.Value,na.rm=T)
 
 # ET
 ET.AcFt=area.ac*ET
